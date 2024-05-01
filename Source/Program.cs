@@ -50,7 +50,6 @@ namespace AsbReceiver
 
             _messageReceiver = new MessageReceiver(connectionString, entityPath);
 
-            // TODO: Replace null with an instance of a class that implements IServiceBus
             _serviceBus = new ServiceBus(logger, _messageReceiver, telemetryClient);
         }
 
