@@ -10,6 +10,6 @@ namespace AsbReceiver
 {
     public interface IServiceBus
     {
-        Task<IList<Message>> ReceiveMessages();
+        Task<IList<string?>> ReceiveMessages();
     }
 }

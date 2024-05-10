@@ -1,24 +1,24 @@
-﻿using Microsoft.ApplicationInsights;
-using Microsoft.Azure.Amqp.Framing;
-using Microsoft.Azure.ServiceBus;
-using Microsoft.Azure.ServiceBus.Core;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Azure.Messaging.ServiceBus;
+using Microsoft.ApplicationInsights;
+using Microsoft.Azure.Amqp.Framing;
+using Microsoft.Extensions.Logging;
 
 namespace AsbReceiver
 {
-    public class ServiceBus : IServiceBus
+    public class AzureMessagingServiceBus : IServiceBus
     {
-        private readonly ILogger _logger;
-        private readonly IMessageReceiver _messageReceiver;
-        private readonly TelemetryClient _telemetryClient;
-        public ServiceBus(ILogger logger, IMessageReceiver messageReceiver, TelemetryClient telemetryClient) { 
+        private ILogger _logger;
+        private ServiceBusReceiver _messageReceiver;
+        private TelemetryClient _telemetryClient;
+
+        public AzureMessagingServiceBus(ILogger logger, ServiceBusReceiver messageReceiver, TelemetryClient telemetryClient)
+        {
             _logger = logger;
             _messageReceiver = messageReceiver;
             _telemetryClient = telemetryClient;
@@ -26,6 +26,7 @@ namespace AsbReceiver
 
         public async Task<IList<string?>> ReceiveMessages()
         {
+
             TimeSpan timeout = TimeSpan.FromSeconds(60);
             int batchSize = 500;
 
@@ -35,13 +36,21 @@ namespace AsbReceiver
             {
                 var stopwatch = new Stopwatch();
                 stopwatch.Start();
-                var messages = await _messageReceiver.ReceiveAsync(batchSize, timeout).ConfigureAwait(false) ?? new List<Message>();
+                var messages = await _messageReceiver.ReceiveMessagesAsync(batchSize, timeout).ConfigureAwait(false);
                 stopwatch.Stop();
 
                 _logger.LogInformation("Received {MessagesCount} messages from the source. Took {StopwatchElapsed}.", messages.Count, stopwatch.Elapsed);
-                    
-                if (messages.Count > 0) { 
-                    await _messageReceiver.CompleteAsync(messages.Select(m => m.SystemProperties.LockToken)).ConfigureAwait(false);
+
+                if (messages.Count > 0)
+                {
+                    var tasks = new List<Task>();
+
+                    foreach (ServiceBusReceivedMessage message in messages)
+                    {
+                        tasks.Add(_messageReceiver.CompleteMessageAsync(message));
+                    }
+
+                    await Task.WhenAll(tasks);
                 }
 
                 _telemetryClient.GetMetric("Batch Processing Time (ms)").TrackValue(stopwatch.Elapsed.TotalMilliseconds);
@@ -49,7 +58,7 @@ namespace AsbReceiver
 
                 return messages.Select(message => message.Body.ToString()).ToList();
             }
-            catch (ServiceBusTimeoutException exception)
+            catch (ServiceBusException exception)
             {
                 _logger.LogInformation(exception, "Timed out waiting for messages.");
                 return new List<string?>();

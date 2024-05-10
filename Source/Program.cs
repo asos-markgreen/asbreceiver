@@ -2,6 +2,7 @@
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure.Messaging.ServiceBus;
 using Microsoft.ApplicationInsights;
 using Microsoft.Azure.ServiceBus;
 using Microsoft.Azure.ServiceBus.Core;
@@ -37,7 +38,6 @@ namespace AsbReceiver
     public class MyWorker : BackgroundService
     {
         private readonly ILogger<MyWorker> _logger;
-        private readonly IMessageReceiver _messageReceiver;
         private readonly IServiceBus _serviceBus;
         private readonly IConfiguration _configuration;
 
@@ -46,11 +46,21 @@ namespace AsbReceiver
             _logger = logger;
             _configuration = configuration;
             string connectionString = _configuration["ServiceBus:ConnectionString"];
-            string entityPath = _configuration["ServiceBus:EntityPath"];
+            string topicName = _configuration["ServiceBus:TopicName"];
+            string subscriptionName = _configuration["ServiceBus:SubscriptionName"];
+            string entityPath = $"{topicName}/Subscriptions/{subscriptionName}";
+            string sdkVersion = _configuration["ServiceBus:SdkVersion"];
 
-            _messageReceiver = new MessageReceiver(connectionString, entityPath);
-
-            _serviceBus = new ServiceBus(logger, _messageReceiver, telemetryClient);
+            if (sdkVersion == "old")
+            {
+                _logger.LogInformation("Using old SDK (Microsoft.Azure.ServiceBus)");
+                _serviceBus = new ServiceBus(logger, new MessageReceiver(connectionString, entityPath), telemetryClient);
+            }
+            else
+            {
+                _logger.LogInformation("Using new SDK (Azure.Messaging.ServiceBus)");
+                _serviceBus = new AzureMessagingServiceBus(logger, new ServiceBusClient(connectionString).CreateReceiver(topicName, subscriptionName), telemetryClient);
+            }
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)

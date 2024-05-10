@@ -24,7 +24,7 @@ namespace AsbReceiver
         {
             while (true)
             {
-                IList<Message> messages = await _serviceBus.ReceiveMessages();
+                IList<string?> messages = await _serviceBus.ReceiveMessages();
             }
         }
     }
